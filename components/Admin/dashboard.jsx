@@ -10,6 +10,9 @@ export default function MoligeERPDashboard() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('year');
+  const [showOrders, setShowOrders] = useState(true);
+  const [showRevenue, setShowRevenue] = useState(true);
+  const [hoverIndex, setHoverIndex] = useState(null);
   const criticalThreshold = 10;
 
   useEffect(() => {
@@ -138,21 +141,43 @@ export default function MoligeERPDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 bg-white rounded-lg border border-blue-50 shadow-sm">
-          <div className="p-4 border-b border-blue-50 flex items-center justify-between gap-4">
+          <div className="p-4 border-b border-blue-50 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-blue-600">
               <BarChart3 size={18} />
               <h2 className="text-lg font-semibold">Analyse des commandes</h2>
             </div>
-            <select
-              value={range}
-              onChange={(e) => setRange(e.target.value)}
-              className="border border-blue-100 rounded-md px-3 py-2 text-sm text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="week">Semaine</option>
-              <option value="month">Mois</option>
-              <option value="six_months">6 mois</option>
-              <option value="year">Annee</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowOrders((value) => !value)}
+                aria-pressed={showOrders}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+                  showOrders ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-white text-blue-300 border-blue-100'
+                }`}
+              >
+                Commandes
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRevenue((value) => !value)}
+                aria-pressed={showRevenue}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+                  showRevenue ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-white text-orange-300 border-orange-100'
+                }`}
+              >
+                Montant
+              </button>
+              <select
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+                className="border border-blue-100 rounded-md px-3 py-2 text-sm text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="week">Semaine</option>
+                <option value="month">Mois</option>
+                <option value="six_months">6 mois</option>
+                <option value="year">Annee</option>
+              </select>
+            </div>
           </div>
           <div className="p-6">
             <div className="overflow-x-auto max-w-full">
@@ -165,41 +190,127 @@ export default function MoligeERPDashboard() {
                   ? (chartWidth - 2 * padding) / (ordersByBucket.length - 1)
                   : 0;
 
-                const points = ordersByBucket.map((bucket, index) => {
-                  const ratio = maxOrders ? bucket.count / maxOrders : 0;
-                  const x = padding + index * step;
-                  const y = chartHeight - padding - ratio * (chartHeight - 2 * padding);
-                  return { x, y };
-                });
+                const buildSmoothPath = (pts) => {
+                  if (!pts.length) return '';
+                  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+                  let d = `M ${pts[0].x} ${pts[0].y}`;
+                  for (let i = 0; i < pts.length - 1; i += 1) {
+                    const p0 = pts[i - 1] || pts[i];
+                    const p1 = pts[i];
+                    const p2 = pts[i + 1];
+                    const p3 = pts[i + 2] || p2;
+                    const cp1x = p1.x + (p2.x - p0.x) / 6;
+                    const cp1y = p1.y + (p2.y - p0.y) / 6;
+                    const cp2x = p2.x - (p3.x - p1.x) / 6;
+                    const cp2y = p2.y - (p3.y - p1.y) / 6;
+                    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+                  }
+                  return d;
+                };
 
-                const linePoints = points.map((p) => `${p.x},${p.y}`).join(' ');
-                const areaPath = points.length
-                  ? `M ${points[0].x} ${chartHeight - padding} L ${points
-                      .map((p) => `${p.x} ${p.y}`)
-                      .join(' ')} L ${points[points.length - 1].x} ${chartHeight - padding} Z`
+                const baseline = chartHeight - padding;
+                const toPoints = (getValue, maxValue) =>
+                  ordersByBucket.map((bucket, index) => {
+                    const ratio = maxValue ? getValue(bucket) / maxValue : 0;
+                    const x = padding + index * step;
+                    const y = chartHeight - padding - ratio * (chartHeight - 2 * padding);
+                    return { x, y };
+                  });
+
+                const countPoints = toPoints((bucket) => bucket.count, maxOrders);
+                const revenuePoints = toPoints((bucket) => bucket.total, maxRevenue);
+
+                const countPath = buildSmoothPath(countPoints);
+                const revenuePath = buildSmoothPath(revenuePoints);
+                const areaPath = showOrders && countPoints.length
+                  ? `${countPath} L ${countPoints[countPoints.length - 1].x} ${baseline} L ${countPoints[0].x} ${baseline} Z`
                   : '';
 
+                const handleMove = (event) => {
+                  if (!ordersByBucket.length) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const x = event.clientX - rect.left;
+                  if (ordersByBucket.length === 1) {
+                    setHoverIndex(0);
+                    return;
+                  }
+                  const idx = Math.round((x - padding) / step);
+                  if (idx >= 0 && idx < ordersByBucket.length) {
+                    setHoverIndex(idx);
+                  } else {
+                    setHoverIndex(null);
+                  }
+                };
+
+                const hovered = hoverIndex !== null ? ordersByBucket[hoverIndex] : null;
+                const hoverPoint = hoverIndex !== null ? countPoints[hoverIndex] : null;
+                const tooltipLeft = hoverPoint
+                  ? Math.min(Math.max(hoverPoint.x, 80), chartWidth - 80)
+                  : 80;
+                const tooltipTop = hoverPoint ? Math.max(hoverPoint.y - 70, 8) : 8;
+
                 return (
-                  <div className="min-w-max">
+                  <div className="min-w-max relative">
                     <svg
                       width={chartWidth}
                       height={chartHeight}
                       viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                       className="block"
+                      onMouseMove={handleMove}
+                      onMouseLeave={() => setHoverIndex(null)}
                     >
-                      <path d={areaPath} fill="rgba(59, 130, 246, 0.12)" />
-                      <polyline
-                        points={linePoints}
-                        fill="none"
-                        stroke="#3b82f6"
-                        strokeWidth="3"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                      />
-                      {points.map((point, idx) => (
-                        <circle key={idx} cx={point.x} cy={point.y} r="4" fill="#f97316" />
+                      {showOrders && <path d={areaPath} fill="rgba(59, 130, 246, 0.12)" />}
+                      {showOrders && (
+                        <path
+                          d={countPath}
+                          fill="none"
+                          stroke="#3b82f6"
+                          strokeWidth="3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {showRevenue && (
+                        <path
+                          d={revenuePath}
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {showOrders && countPoints.map((point, idx) => (
+                        <circle key={`c-${idx}`} cx={point.x} cy={point.y} r="3" fill="#3b82f6" />
+                      ))}
+                      {showRevenue && revenuePoints.map((point, idx) => (
+                        <circle key={`r-${idx}`} cx={point.x} cy={point.y} r="3" fill="#f97316" />
                       ))}
                     </svg>
+                    {hovered && (
+                      <div
+                        className="absolute bg-white border border-blue-100 shadow-md rounded-md px-3 py-2 text-xs text-gray-700"
+                        style={{ left: tooltipLeft, top: tooltipTop, transform: 'translateX(-50%)' }}
+                      >
+                        <div className="font-medium text-gray-900">{hovered.label}</div>
+                        {showOrders && (
+                          <div className="text-blue-600">Commandes: {hovered.count}</div>
+                        )}
+                        {showRevenue && (
+                          <div className="text-orange-600">Montant: {hovered.total.toFixed(2)} €</div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-6 rounded-full ${showOrders ? 'bg-blue-500' : 'bg-blue-200'}`} />
+                        Commandes
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-6 rounded-full ${showRevenue ? 'bg-orange-500' : 'bg-orange-200'}`} />
+                        Montant
+                      </div>
+                    </div>
                     <div
                       className="flex text-[10px] text-gray-500 mt-2"
                       style={{ width: chartWidth, paddingLeft: padding, paddingRight: padding }}
