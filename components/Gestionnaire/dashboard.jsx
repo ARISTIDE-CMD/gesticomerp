@@ -1,17 +1,48 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Package, Users, ShoppingCart, AlertCircle } from 'lucide-react';
+import { getCommandes } from '@/services/commandes.service';
+import { getArticles } from '@/services/articles.service';
+import { getClients } from '@/services/clients.service';
 
 export default function GestionnaireDashboard() {
-  const stats = [
-    { id: 1, label: 'Commandes du jour', value: '12', icon: ShoppingCart },
-    { id: 2, label: 'Clients actifs', value: '68', icon: Users },
-    { id: 3, label: 'Articles en stock', value: '1 240', icon: Package },
-    { id: 4, label: 'Alertes stock', value: '6', icon: AlertCircle },
-  ];
+  const [commandes, setCommandes] = useState([]);
+  const [articles, setArticles] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const criticalThreshold = 10;
 
-  const commandes = [
-    { id: 1, numero: 'CMD-2401', client: 'Studio Nova', statut: 'En attente' },
-    { id: 2, numero: 'CMD-2402', client: 'Kappa SARL', statut: 'Validee' },
-    { id: 3, numero: 'CMD-2403', client: 'Delta Pro', statut: 'Preparation' },
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [orders, items, customers] = await Promise.all([
+        getCommandes(),
+        getArticles(),
+        getClients(),
+      ]);
+      setCommandes(orders);
+      setArticles(items);
+      setClients(customers);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const stockAlerts = useMemo(
+    () => articles.filter((a) => (a.quantite_stock ?? 0) <= criticalThreshold),
+    [articles]
+  );
+
+  const recentOrders = commandes.slice(0, 3);
+
+  const stats = [
+    { id: 1, label: 'Commandes', value: loading ? '...' : commandes.length, icon: ShoppingCart },
+    { id: 2, label: 'Clients actifs', value: loading ? '...' : clients.length, icon: Users },
+    { id: 3, label: 'Articles en stock', value: loading ? '...' : articles.length, icon: Package },
+    { id: 4, label: 'Alertes stock', value: loading ? '...' : stockAlerts.length, icon: AlertCircle },
   ];
 
   return (
@@ -51,13 +82,21 @@ export default function GestionnaireDashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {commandes.map((commande) => (
-                  <tr key={commande.id} className="hover:bg-blue-50/40">
-                    <td className="px-6 py-4 text-sm text-gray-900">{commande.numero}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{commande.client}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{commande.statut}</td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-6 text-sm text-gray-500 text-center">
+                      Chargement...
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  recentOrders.map((commande) => (
+                    <tr key={commande.id} className="hover:bg-blue-50/40">
+                      <td className="px-6 py-4 text-sm text-gray-900">{commande.numero_commande}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{commande.client?.nom ?? '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{commande.statut}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -68,15 +107,15 @@ export default function GestionnaireDashboard() {
           <ul className="mt-4 space-y-3 text-sm text-gray-600">
             <li className="flex items-center justify-between">
               Relancer les clients en attente
-              <span className="text-orange-500 font-semibold">3</span>
+              <span className="text-orange-500 font-semibold">{loading ? '...' : commandes.filter((c) => c.statut === 'en_attente').length}</span>
             </li>
             <li className="flex items-center justify-between">
               Reapprovisionnement urgent
-              <span className="text-orange-500 font-semibold">2</span>
+              <span className="text-orange-500 font-semibold">{loading ? '...' : stockAlerts.length}</span>
             </li>
             <li className="flex items-center justify-between">
               Documents a generer
-              <span className="text-orange-500 font-semibold">4</span>
+              <span className="text-orange-500 font-semibold">{loading ? '...' : Math.min(commandes.length, 5)}</span>
             </li>
           </ul>
         </div>

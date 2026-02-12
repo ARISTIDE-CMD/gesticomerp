@@ -1,34 +1,27 @@
 import { supabase } from '@/lib/supabase'
 
-export async function getClients() {
+export async function getUsers() {
     const { data, error } = await supabase
-        .from('clients')
+        .from('profiles')
         .select('*')
+        .order('created_at', { ascending: false })
 
     if (error) throw error
     return data
 }
 
-export async function createClient(client) {
+export async function updateUser(id, updates) {
     const { error } = await supabase
-        .from('clients')
-        .insert(client)
-
-    if (error) throw error
-}
-
-export async function updateClient(id, updates) {
-    const { error } = await supabase
-        .from('clients')
+        .from('profiles')
         .update(updates)
         .eq('id', id)
 
     if (error) throw error
 }
 
-export async function deleteClient(id) {
+export async function deleteUser(id) {
     const { error } = await supabase
-        .from('clients')
+        .from('profiles')
         .delete()
         .eq('id', id)
 

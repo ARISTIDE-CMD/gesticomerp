@@ -1,31 +1,26 @@
 import { useEffect, useState } from 'react';
-import { Edit, Trash2, Package } from 'lucide-react';
-import { getArticles, createArticle } from '@/services/articles.service';
+import { Edit, Trash2, Package, X } from 'lucide-react';
+import { getArticles, createArticle, updateArticle, deleteArticle } from '@/services/articles.service';
 
 export default function GestionArticles() {
-  const fakeArticles = [
-    { id: 1, ref: 'REF-A001', nom: 'Clavier mecanique RGB', prix: 89.99, quantite: 150 },
-    { id: 2, ref: 'REF-B002', nom: 'Souris gaming sans fil', prix: 59.99, quantite: 230 },
-    { id: 3, ref: 'REF-C003', nom: 'Ecran incurve 27 pouces', prix: 349.99, quantite: 75 },
-    { id: 4, ref: 'REF-D004', nom: 'Webcam HD 1080p', prix: 45.0, quantite: 300 },
-    { id: 5, ref: 'REF-E005', nom: 'Casque audio Bluetooth', prix: 79.95, quantite: 180 },
-  ];
-
-  const [articles, setArticles] = useState(fakeArticles);
+  const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingArticle, setEditingArticle] = useState(null);
   const [reference, setReference] = useState('');
   const [designation, setDesignation] = useState('');
   const [prixUnitaire, setPrixUnitaire] = useState('');
   const [quantiteStock, setQuantiteStock] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     loadArticles();
   }, []);
 
   const loadArticles = async () => {
+    setLoading(true);
     try {
       const data = await getArticles();
       setArticles(data);
@@ -57,9 +52,45 @@ export default function GestionArticles() {
     }
   };
 
+  const handleEdit = (article) => {
+    setEditingArticle(article);
+    setReference(article.reference ?? article.ref ?? '');
+    setDesignation(article.designation ?? article.nom ?? '');
+    setPrixUnitaire(String(article.prix_unitaire ?? article.prix ?? ''));
+    setQuantiteStock(String(article.quantite_stock ?? article.quantite ?? ''));
+  };
+
+  const handleUpdate = async () => {
+    if (!editingArticle) return;
+    setError('');
+    setUpdating(true);
+    try {
+      await updateArticle(editingArticle.id, {
+        reference,
+        designation,
+        prix_unitaire: Number(prixUnitaire) || 0,
+        quantite_stock: Number(quantiteStock) || 0,
+      });
+      await loadArticles();
+      setEditingArticle(null);
+      setReference('');
+      setDesignation('');
+      setPrixUnitaire('');
+      setQuantiteStock('');
+    } catch (e) {
+      setError(e.message || 'Erreur lors de la modification.');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleDelete = (id) => {
     if (window.confirm('Etes-vous sur de vouloir supprimer cet article ?')) {
-      setArticles(articles.filter((article) => article.id !== id));
+      deleteArticle(id)
+        .then(loadArticles)
+        .catch((e) => {
+          setError(e.message || 'Erreur lors de la suppression.');
+        });
     }
   };
 
@@ -122,7 +153,11 @@ export default function GestionArticles() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        <button className="text-blue-500 hover:text-blue-700" title="Modifier">
+                        <button
+                          className="text-blue-500 hover:text-blue-700"
+                          title="Modifier"
+                          onClick={() => handleEdit(article)}
+                        >
                           <Edit size={18} />
                         </button>
                         <button
@@ -152,7 +187,7 @@ export default function GestionArticles() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-blue-50">
               <h2 className="text-lg font-semibold text-blue-700">Nouvel article</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
+                <X size={18} />
               </button>
             </div>
             <div className="p-6 space-y-4">
@@ -219,6 +254,83 @@ export default function GestionArticles() {
                 disabled={creating}
               >
                 {creating ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingArticle && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-blue-50">
+              <h2 className="text-lg font-semibold text-blue-700">Modifier l'article</h2>
+              <button onClick={() => setEditingArticle(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reference</label>
+                <input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Designation</label>
+                <input
+                  type="text"
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Prix unitaire</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={prixUnitaire}
+                    onChange={(e) => setPrixUnitaire(e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Quantite</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={quantiteStock}
+                    onChange={(e) => setQuantiteStock(e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-3 py-2">
+                  {error}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-blue-50 flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-md text-blue-600 border border-blue-200 hover:bg-blue-50"
+                onClick={() => setEditingArticle(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="px-4 py-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-60"
+                onClick={handleUpdate}
+                disabled={updating}
+              >
+                {updating ? 'Mise a jour...' : 'Enregistrer'}
               </button>
             </div>
           </div>

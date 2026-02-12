@@ -1,16 +1,67 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Edit, Trash2, UserPlus, X } from 'lucide-react';
+import { getUsers, updateUser, deleteUser } from '@/services/users.service';
 
 export default function GestionUtilisateurs() {
   const [showModal, setShowModal] = useState(false);
-  const [users] = useState([
-    { id: 1, nom: 'Diallo Awa', login: 'admin.awa', role: 'Administrateur' },
-    { id: 2, nom: 'Kone Idris', login: 'gestion.idris', role: 'Gestionnaire' },
-    { id: 3, nom: 'Traore Mariam', login: 'gestion.mariam', role: 'Gestionnaire' },
-  ]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState(null);
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState('GESTIONNAIRE');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const roleBadge = (role) =>
-    role === 'Administrateur'
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await getUsers();
+      setUsers(data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEdit = (user) => {
+    setEditingUser(user);
+    setFullName(user.full_name || '');
+    setRole(user.role || 'GESTIONNAIRE');
+    setError('');
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!editingUser) {
+      setError("Creation utilisateur indisponible ici. Utilisez le back-end Supabase Admin.");
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await updateUser(editingUser.id, { full_name: fullName, role });
+      await loadUsers();
+      setShowModal(false);
+    } catch (e) {
+      setError(e.message || "Erreur lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm('Supprimer ce profil utilisateur ?')) {
+      deleteUser(id)
+        .then(loadUsers)
+        .catch((e) => setError(e.message || 'Erreur lors de la suppression.'));
+    }
+  };
+
+  const roleBadge = (value) =>
+    value === 'ADMIN'
       ? 'bg-blue-100 text-blue-700'
       : 'bg-orange-100 text-orange-700';
 
@@ -23,7 +74,13 @@ export default function GestionUtilisateurs() {
         </div>
         <button
           className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setEditingUser(null);
+            setFullName('');
+            setRole('GESTIONNAIRE');
+            setError("Creation utilisateur indisponible ici. Utilisez le back-end Supabase Admin.");
+            setShowModal(true);
+          }}
         >
           <UserPlus size={18} />
           Ajouter un utilisateur
@@ -42,27 +99,43 @@ export default function GestionUtilisateurs() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-blue-50/40">
-                  <td className="px-6 py-4 text-sm text-gray-900">{user.nom}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{user.login}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${roleBadge(user.role)}`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button className="text-blue-500 hover:text-blue-700" title="Modifier">
-                        <Edit size={18} />
-                      </button>
-                      <button className="text-orange-500 hover:text-orange-600" title="Supprimer">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-6 text-sm text-gray-500 text-center">
+                    Chargement des utilisateurs...
                   </td>
                 </tr>
-              ))}
+              ) : (
+                users.map((user) => (
+                  <tr key={user.id} className="hover:bg-blue-50/40">
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.full_name || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.id?.slice(0, 8)}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${roleBadge(user.role)}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        <button
+                          className="text-blue-500 hover:text-blue-700"
+                          title="Modifier"
+                          onClick={() => openEdit(user)}
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button
+                          className="text-orange-500 hover:text-orange-600"
+                          title="Supprimer"
+                          onClick={() => handleDelete(user.id)}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -72,7 +145,9 @@ export default function GestionUtilisateurs() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-blue-50">
-              <h2 className="text-lg font-semibold text-blue-700">Nouvel utilisateur</h2>
+              <h2 className="text-lg font-semibold text-blue-700">
+                {editingUser ? 'Modifier utilisateur' : 'Nouvel utilisateur'}
+              </h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={18} />
               </button>
@@ -84,31 +159,27 @@ export default function GestionUtilisateurs() {
                   type="text"
                   className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Nom complet"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Login</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Identifiant"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
-                <input
-                  type="password"
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="********"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                <select className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>Administrateur</option>
-                  <option>Gestionnaire</option>
+                <select
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                >
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="GESTIONNAIRE">GESTIONNAIRE</option>
                 </select>
               </div>
+
+              {error && (
+                <div className="text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-3 py-2">
+                  {error}
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-blue-50 flex justify-end gap-3">
               <button
@@ -117,8 +188,12 @@ export default function GestionUtilisateurs() {
               >
                 Annuler
               </button>
-              <button className="px-4 py-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white">
-                Enregistrer
+              <button
+                className="px-4 py-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-60"
+                onClick={handleSave}
+                disabled={saving || !editingUser}
+              >
+                {saving ? 'Enregistrement...' : 'Enregistrer'}
               </button>
             </div>
           </div>

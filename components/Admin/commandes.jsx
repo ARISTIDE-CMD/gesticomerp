@@ -1,31 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Eye } from 'lucide-react';
+import { getCommandes } from '@/services/commandes.service';
 
 export default function AdminCommandes() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [commandes] = useState([
-    { id: 1, numero: 'ORD-2024-011', client: 'Alpha Solutions', date: '02/01/2024', statut: 'Validee', montant: 182.45 },
-    { id: 2, numero: 'ORD-2024-012', client: 'Beta Innovations', date: '05/01/2024', statut: 'En attente', montant: 364.75 },
-    { id: 3, numero: 'ORD-2024-013', client: 'Gamma Corp', date: '08/01/2024', statut: 'Annulee', montant: 79.99 },
-    { id: 4, numero: 'ORD-2024-014', client: 'Studio Nova', date: '10/01/2024', statut: 'Validee', montant: 299.0 },
-  ]);
+  const [commandes, setCommandes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadCommandes();
+  }, []);
+
+  const loadCommandes = async () => {
+    setLoading(true);
+    try {
+      const data = await getCommandes();
+      setCommandes(data);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatutStyle = (statut) => {
     switch (statut) {
-      case 'Validee':
+      case 'validee':
         return 'bg-green-100 text-green-700';
-      case 'En attente':
+      case 'en_attente':
         return 'bg-orange-100 text-orange-700';
-      case 'Annulee':
+      case 'annulee':
         return 'bg-red-100 text-red-700';
+      case 'livree':
+        return 'bg-blue-100 text-blue-700';
       default:
         return 'bg-gray-100 text-gray-700';
     }
   };
 
   const filtered = commandes.filter((commande) =>
-    commande.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    commande.client.toLowerCase().includes(searchTerm.toLowerCase())
+    commande.numero_commande?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    commande.client?.nom?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -47,13 +60,13 @@ export default function AdminCommandes() {
         <div className="bg-white rounded-lg border border-blue-50 shadow-sm p-4">
           <div className="text-sm text-blue-600">En attente</div>
           <div className="text-2xl font-semibold text-orange-500 mt-2">
-            {commandes.filter((c) => c.statut === 'En attente').length}
+            {commandes.filter((c) => c.statut === 'en_attente').length}
           </div>
         </div>
         <div className="bg-white rounded-lg border border-blue-50 shadow-sm p-4">
           <div className="text-sm text-blue-600">Validees</div>
           <div className="text-2xl font-semibold text-orange-500 mt-2">
-            {commandes.filter((c) => c.statut === 'Validee').length}
+            {commandes.filter((c) => c.statut === 'validee').length}
           </div>
         </div>
       </div>
@@ -70,7 +83,7 @@ export default function AdminCommandes() {
               className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <div className="text-sm text-gray-500">{filtered.length} resultat(s)</div>
+          <div className="text-sm text-gray-500">{loading ? 'Chargement...' : `${filtered.length} resultat(s)`}</div>
         </div>
 
         <div className="overflow-x-auto">
@@ -86,24 +99,36 @@ export default function AdminCommandes() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {filtered.map((commande) => (
-                <tr key={commande.id} className="hover:bg-blue-50/40">
-                  <td className="px-6 py-4 text-sm text-gray-900">{commande.numero}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{commande.client}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{commande.date}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 inline-flex text-xs font-semibold rounded-full ${getStatutStyle(commande.statut)}`}>
-                      {commande.statut}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{commande.montant.toFixed(2)} €</td>
-                  <td className="px-6 py-4">
-                    <button className="text-blue-500 hover:text-blue-700" title="Voir">
-                      <Eye size={18} />
-                    </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-6 text-sm text-gray-500 text-center">
+                    Chargement des commandes...
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((commande) => (
+                  <tr key={commande.id} className="hover:bg-blue-50/40">
+                    <td className="px-6 py-4 text-sm text-gray-900">{commande.numero_commande}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{commande.client?.nom ?? '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {commande.created_at ? new Date(commande.created_at).toLocaleDateString() : '-'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 inline-flex text-xs font-semibold rounded-full ${getStatutStyle(commande.statut)}`}>
+                        {commande.statut}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {commande.montant_total ? Number(commande.montant_total).toFixed(2) : '0.00'} €
+                    </td>
+                    <td className="px-6 py-4">
+                      <button className="text-blue-500 hover:text-blue-700" title="Voir">
+                        <Eye size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

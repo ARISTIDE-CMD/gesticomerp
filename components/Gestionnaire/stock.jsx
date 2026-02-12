@@ -1,31 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, AlertTriangle } from 'lucide-react';
+import { getArticles } from '@/services/articles.service';
 
 export default function GestionStocks() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [stocks] = useState([
-    { id: 1, reference: 'ART001', article: 'Disque dur SSD 1TB', quantite: 75, seuilCritique: 20 },
-    { id: 2, reference: 'ART002', article: 'Module RAM DDR4 16GB', quantite: 12, seuilCritique: 15 },
-    { id: 3, reference: 'ART003', article: 'Processeur Intel i7', quantite: 30, seuilCritique: 10 },
-    { id: 4, reference: 'ART004', article: 'Carte graphique RTX 3060', quantite: 5, seuilCritique: 8 },
-    { id: 5, reference: 'ART005', article: 'Ecran 27 pouces Full HD', quantite: 45, seuilCritique: 25 },
-    { id: 6, reference: 'ART006', article: 'Clavier mecanique RGB', quantite: 18, seuilCritique: 20 },
-    { id: 7, reference: 'ART007', article: 'Souris gaming sans fil', quantite: 60, seuilCritique: 30 },
-    { id: 8, reference: 'ART008', article: 'Webcam HD 1080p', quantite: 22, seuilCritique: 20 },
-    { id: 9, reference: 'ART009', article: 'Casque audio sans fil', quantite: 9, seuilCritique: 10 },
-    { id: 10, reference: 'ART010', article: 'Adaptateur USB-C multi-ports', quantite: 35, seuilCritique: 15 },
-    { id: 11, reference: 'ART011', article: 'Imprimante multifonction', quantite: 8, seuilCritique: 10 },
-    { id: 12, reference: 'ART012', article: 'Routeur Wi-Fi 6', quantite: 7, seuilCritique: 12 },
-    { id: 13, reference: 'ART013', article: 'Serveur NAS 8TB', quantite: 3, seuilCritique: 5 },
-  ]);
+  const [stocks, setStocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const criticalThreshold = 10;
+
+  useEffect(() => {
+    loadStocks();
+  }, []);
+
+  const loadStocks = async () => {
+    setLoading(true);
+    try {
+      const data = await getArticles();
+      setStocks(data);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredStocks = stocks.filter((stock) =>
-    stock.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    stock.article.toLowerCase().includes(searchTerm.toLowerCase())
+    (stock.reference || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (stock.designation || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getQuantiteStyle = (quantite, seuilCritique) => {
-    if (quantite <= seuilCritique) {
+  const getQuantiteStyle = (quantite) => {
+    if (quantite <= criticalThreshold) {
       return 'text-orange-600 font-semibold';
     }
     return 'text-gray-900';
@@ -56,7 +59,9 @@ export default function GestionStocks() {
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <div className="text-sm text-gray-500">{filteredStocks.length} articles</div>
+          <div className="text-sm text-gray-500">
+            {loading ? 'Chargement...' : `${filteredStocks.length} articles`}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -70,16 +75,24 @@ export default function GestionStocks() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {filteredStocks.map((stock) => (
-                <tr key={stock.id} className="hover:bg-blue-50/40">
-                  <td className="px-6 py-4 text-sm text-gray-900">{stock.reference}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{stock.article}</td>
-                  <td className={`px-6 py-4 text-sm ${getQuantiteStyle(stock.quantite, stock.seuilCritique)}`}>
-                    {stock.quantite}
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-6 text-sm text-gray-500 text-center">
+                    Chargement des stocks...
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{stock.seuilCritique}</td>
                 </tr>
-              ))}
+              ) : (
+                filteredStocks.map((stock) => (
+                  <tr key={stock.id} className="hover:bg-blue-50/40">
+                    <td className="px-6 py-4 text-sm text-gray-900">{stock.reference}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{stock.designation}</td>
+                    <td className={`px-6 py-4 text-sm ${getQuantiteStyle(stock.quantite_stock ?? 0)}`}>
+                      {stock.quantite_stock}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{criticalThreshold}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
