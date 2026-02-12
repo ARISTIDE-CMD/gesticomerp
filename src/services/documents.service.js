@@ -18,6 +18,19 @@ export async function createDocument(document) {
     if (error) throw error
 }
 
+export async function generateDocument(payload) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData?.session?.access_token
+
+    const { data, error } = await supabase.functions.invoke('generate-document', {
+        body: payload,
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+
+    if (error) throw error
+    return data
+}
+
 export async function updateDocument(id, updates) {
     const { error } = await supabase
         .from('documents')

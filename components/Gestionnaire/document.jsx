@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileText, Download, Eye, Upload, Trash2, X } from 'lucide-react';
-import { getDocuments, createDocument, deleteDocument } from '@/services/documents.service';
+import { getDocuments, generateDocument, deleteDocument } from '@/services/documents.service';
 import { getCommandes } from '@/services/commandes.service';
 
 const typeLabel = (type) => {
@@ -24,7 +24,6 @@ export default function GestionDocuments() {
   const [showModal, setShowModal] = useState(false);
   const [typeDocument, setTypeDocument] = useState('proforma');
   const [commandeId, setCommandeId] = useState('');
-  const [fichierUrl, setFichierUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -47,15 +46,13 @@ export default function GestionDocuments() {
     setSaving(true);
     setError('');
     try {
-      await createDocument({
+      await generateDocument({
         type_document: typeDocument,
         commande_id: commandeId || null,
-        fichier_url: fichierUrl || null,
       });
       await loadData();
       setShowModal(false);
       setCommandeId('');
-      setFichierUrl('');
       setTypeDocument('proforma');
     } catch (e) {
       setError(e.message || 'Erreur lors de la creation.');
@@ -181,6 +178,26 @@ export default function GestionDocuments() {
                 <div><span className="font-semibold">Client:</span> {selectedDocument.commande?.client?.nom ?? '-'}</div>
                 <div><span className="font-semibold">Montant:</span> {selectedDocument.commande?.montant_total ? `${Number(selectedDocument.commande.montant_total).toFixed(2)} €` : '-'}</div>
               </div>
+              {selectedDocument.fichier_url ? (
+                <div className="space-y-3">
+                  <iframe
+                    title="Apercu PDF"
+                    src={selectedDocument.fichier_url}
+                    className="w-full h-64 border rounded"
+                  />
+                  <a
+                    href={selectedDocument.fichier_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  >
+                    <Download size={16} />
+                    Telecharger le PDF
+                  </a>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">Aucun fichier PDF attache.</div>
+              )}
             </div>
           ) : (
             <div className="text-center py-12">
@@ -230,17 +247,6 @@ export default function GestionDocuments() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">URL du fichier (optionnel)</label>
-                <input
-                  type="text"
-                  value={fichierUrl}
-                  onChange={(e) => setFichierUrl(e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://..."
-                />
-              </div>
-
               {error && (
                 <div className="text-sm text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-3 py-2">
                   {error}
