@@ -1,10 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, Edit, TrendingUp, Package, AlertCircle, BarChart3 } from 'lucide-react';
+import { TrendingUp, Package, Users, BarChart3 } from 'lucide-react';
 import { getCommandes } from '@/services/commandes.service';
 import { getArticles } from '@/services/articles.service';
 import { getClients } from '@/services/clients.service';
 import { formatFCFA } from '@/lib/format';
 import { syncStockAlerts } from '@/lib/notifications';
+
+const studyRangeOptions = [
+  { value: '30', label: '30 jours' },
+  { value: '90', label: '3 mois' },
+  { value: '180', label: '6 mois' },
+  { value: '365', label: '12 mois' },
+  { value: 'all', label: 'Tout' },
+];
+
+const filterCommandesByRange = (items, rangeValue) => {
+  if (rangeValue === 'all') return items;
+  const days = Number(rangeValue);
+  if (!Number.isFinite(days) || days <= 0) return items;
+  const sinceTs = Date.now() - days * 24 * 60 * 60 * 1000;
+  return items.filter((item) => {
+    if (!item?.created_at) return false;
+    const createdTs = new Date(item.created_at).getTime();
+    return Number.isFinite(createdTs) && createdTs >= sinceTs;
+  });
+};
 
 export default function MoligeERPDashboard() {
   const [commandes, setCommandes] = useState([]);
@@ -15,6 +35,12 @@ export default function MoligeERPDashboard() {
   const [showOrders, setShowOrders] = useState(true);
   const [showRevenue, setShowRevenue] = useState(true);
   const [hoverIndex, setHoverIndex] = useState(null);
+  const [productStudyRange, setProductStudyRange] = useState('180');
+  const [productMetric, setProductMetric] = useState('qty');
+  const [productTop, setProductTop] = useState(5);
+  const [clientStudyRange, setClientStudyRange] = useState('180');
+  const [clientMetric, setClientMetric] = useState('revenue');
+  const [clientTop, setClientTop] = useState(5);
   const criticalThreshold = 10;
 
   useEffect(() => {
@@ -107,7 +133,123 @@ export default function MoligeERPDashboard() {
   const maxRevenue = Math.max(1, ...ordersByBucket.map((m) => m.total));
 
   const stockAlerts = articles.filter((a) => (a.quantite_stock ?? 0) <= criticalThreshold);
-  const recentOrders = commandes.slice(0, 5);
+
+  const topProducts = useMemo(() => {
+    const scopedOrders = filterCommandesByRange(commandes, productStudyRange);
+    const map = new Map();
+
+    scopedOrders.forEach((commande) => {
+      (commande.lignes ?? []).forEach((line) => {
+        const article = line.article ?? {};
+        const productId =
+          article.id ||
+          line.article_id ||
+          `${article.reference ?? 'ref'}-${article.designation ?? 'article'}`;
+        const qty = Number(line.quantite || 0);
+        const lineTotal = qty * Number(line.prix_unitaire || 0);
+
+        if (!map.has(productId)) {
+          map.set(productId, {
+            id: productId,
+            designation: article.designation ?? 'Article sans designation',
+            reference: article.reference ?? '-',
+            qty: 0,
+            revenue: 0,
+            orderRefs: new Set(),
+          });
+        }
+
+        const current = map.get(productId);
+        current.qty += qty;
+        current.revenue += lineTotal;
+        current.orderRefs.add(commande.id);
+      });
+    });
+
+    const rows = Array.from(map.values()).map((item) => ({
+      ...item,
+      orderCount: item.orderRefs.size,
+    }));
+
+    rows.sort((a, b) => {
+      if (productMetric === 'revenue') return b.revenue - a.revenue;
+      if (productMetric === 'orders') return b.orderCount - a.orderCount;
+      return b.qty - a.qty;
+    });
+
+    return rows.slice(0, productTop);
+  }, [commandes, productStudyRange, productMetric, productTop]);
+
+  const topClients = useMemo(() => {
+    const scopedOrders = filterCommandesByRange(commandes, clientStudyRange);
+    const map = new Map();
+
+    scopedOrders.forEach((commande) => {
+      const clientId = commande.client?.id || commande.client_id || commande.client?.nom || 'client-inconnu';
+      if (!map.has(clientId)) {
+        map.set(clientId, {
+          id: clientId,
+          name: commande.client?.nom || 'Client inconnu',
+          orders: 0,
+          revenue: 0,
+        });
+      }
+
+      const current = map.get(clientId);
+      current.orders += 1;
+      current.revenue += Number(commande.montant_total || 0);
+    });
+
+    const rows = Array.from(map.values()).map((item) => ({
+      ...item,
+      avgTicket: item.orders > 0 ? item.revenue / item.orders : 0,
+    }));
+
+    rows.sort((a, b) => {
+      if (clientMetric === 'orders') return b.orders - a.orders;
+      if (clientMetric === 'avg') return b.avgTicket - a.avgTicket;
+      return b.revenue - a.revenue;
+    });
+
+    return rows.slice(0, clientTop);
+  }, [commandes, clientStudyRange, clientMetric, clientTop]);
+
+  const marketInsights = useMemo(() => {
+    const totalOrders = commandes.length;
+    const pendingOrders = commandes.filter((item) => item.statut === 'en_attente').length;
+    const pendingRate = totalOrders ? (pendingOrders / totalOrders) * 100 : 0;
+    const topClientRevenue = topClients[0]?.revenue || 0;
+    const topClientShare = revenue ? (topClientRevenue / revenue) * 100 : 0;
+    const topProductRevenue = topProducts[0]?.revenue || 0;
+    const topProductShare = revenue ? (topProductRevenue / revenue) * 100 : 0;
+
+    return [
+      {
+        title: 'Concentration clients',
+        value: `${topClientShare.toFixed(1)}%`,
+        text:
+          topClientShare >= 35
+            ? 'Dependance elevee au meilleur client: activez une strategie de diversification.'
+            : 'Portefeuille clients relativement equilibre. Continuez la segmentation B2B/B2C.',
+      },
+      {
+        title: 'Concentration produits',
+        value: `${topProductShare.toFixed(1)}%`,
+        text:
+          topProductShare >= 25
+            ? 'Un produit domine les ventes. Creez des offres associees pour augmenter le panier.'
+            : 'Ventes reparties sur plusieurs produits. Opportunite de packs thematiques.',
+      },
+      {
+        title: 'Fluidite commerciale',
+        value: `${pendingRate.toFixed(1)}%`,
+        text:
+          pendingRate >= 25
+            ? "Beaucoup de commandes en attente. Priorisez la validation et le suivi client."
+            : 'Cycle de traitement sain. Testez des campagnes de relance automatique.',
+      },
+    ];
+  }, [commandes, topClients, topProducts, revenue]);
 
   return (
     <div className="space-y-6">
@@ -362,45 +504,154 @@ export default function MoligeERPDashboard() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="bg-white rounded-lg border border-blue-50 shadow-sm">
-          <div className="p-4 border-b border-blue-50 flex items-center gap-2 text-blue-600">
-            <Package size={18} />
-            <h2 className="text-lg font-semibold">Stocks sensibles</h2>
+          <div className="p-4 border-b border-blue-50 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-blue-600">
+              <Package size={18} />
+              <h2 className="text-lg font-semibold">Produits les plus achetes</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={productStudyRange}
+                onChange={(e) => setProductStudyRange(e.target.value)}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {studyRangeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={productMetric}
+                onChange={(e) => setProductMetric(e.target.value)}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="qty">Par quantite</option>
+                <option value="revenue">Par chiffre</option>
+                <option value="orders">Par frequence</option>
+              </select>
+              <select
+                value={productTop}
+                onChange={(e) => setProductTop(Number(e.target.value))}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={5}>Top 5</option>
+                <option value={8}>Top 8</option>
+                <option value={10}>Top 10</option>
+              </select>
+            </div>
           </div>
           <div className="p-4 space-y-3 text-sm text-gray-600">
             {loading ? (
               <div>Chargement...</div>
-            ) : stockAlerts.length ? (
-              stockAlerts.slice(0, 5).map((item) => (
-                <div key={item.id} className="flex items-center justify-between">
-                  {item.designation}
-                  <span className="text-orange-500 font-semibold">{item.quantite_stock} restants</span>
+            ) : topProducts.length ? (
+              topProducts.map((item, index) => (
+                <div key={item.id} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-800 truncate">
+                      {index + 1}. {item.designation}
+                    </div>
+                    <div className="text-xs text-gray-500">Ref: {item.reference}</div>
+                    <div className="text-xs text-gray-500">
+                      {item.qty} unites | {item.orderCount} commandes | {formatFCFA(item.revenue, 2)}
+                    </div>
+                  </div>
+                  <span className="text-orange-500 font-semibold whitespace-nowrap">
+                    {productMetric === 'revenue'
+                      ? formatFCFA(item.revenue, 2)
+                      : productMetric === 'orders'
+                        ? `${item.orderCount} cmd`
+                        : `${item.qty} u`}
+                  </span>
                 </div>
               ))
             ) : (
-              <div>Aucune alerte stock.</div>
+              <div>Aucune donnee de vente sur la periode.</div>
             )}
           </div>
         </div>
 
         <div className="bg-white rounded-lg border border-blue-50 shadow-sm">
-          <div className="p-4 border-b border-blue-50 flex items-center gap-2 text-blue-600">
-            <AlertCircle size={18} />
-            <h2 className="text-lg font-semibold">Dernieres commandes</h2>
+          <div className="p-4 border-b border-blue-50 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-blue-600">
+              <Users size={18} />
+              <h2 className="text-lg font-semibold">Meilleurs clients</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={clientStudyRange}
+                onChange={(e) => setClientStudyRange(e.target.value)}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {studyRangeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={clientMetric}
+                onChange={(e) => setClientMetric(e.target.value)}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="revenue">Par chiffre</option>
+                <option value="orders">Par commandes</option>
+                <option value="avg">Par panier moyen</option>
+              </select>
+              <select
+                value={clientTop}
+                onChange={(e) => setClientTop(Number(e.target.value))}
+                className="border border-blue-100 rounded-md px-2.5 py-1.5 text-xs text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={5}>Top 5</option>
+                <option value={8}>Top 8</option>
+                <option value={10}>Top 10</option>
+              </select>
+            </div>
           </div>
           <div className="p-4 space-y-3 text-sm text-gray-600">
             {loading ? (
               <div>Chargement...</div>
-            ) : recentOrders.length ? (
-              recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between">
-                  {order.numero_commande}
-                  <span className="text-orange-500 font-semibold">{order.client?.nom ?? '-'}</span>
+            ) : topClients.length ? (
+              topClients.map((item, index) => (
+                <div key={item.id} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-800 truncate">
+                      {index + 1}. {item.name}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {item.orders} commandes | Panier moyen: {formatFCFA(item.avgTicket, 2)}
+                    </div>
+                  </div>
+                  <span className="text-orange-500 font-semibold whitespace-nowrap">
+                    {clientMetric === 'orders'
+                      ? `${item.orders} cmd`
+                      : clientMetric === 'avg'
+                        ? formatFCFA(item.avgTicket, 2)
+                        : formatFCFA(item.revenue, 2)}
+                  </span>
                 </div>
               ))
             ) : (
-              <div>Aucune commande recente.</div>
+              <div>Aucune commande cliente sur la periode.</div>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-blue-50 shadow-sm">
+        <div className="p-4 border-b border-blue-50 flex items-center gap-2 text-blue-600">
+          <TrendingUp size={18} />
+          <h2 className="text-lg font-semibold">Pistes d'analyse du marche</h2>
+        </div>
+        <div className="p-4 grid gap-3 md:grid-cols-3">
+          {marketInsights.map((insight) => (
+            <div key={insight.title} className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+              <div className="text-xs text-blue-500">{insight.title}</div>
+              <div className="text-xl font-semibold text-orange-500 mt-1">{insight.value}</div>
+              <div className="text-xs text-gray-600 mt-1">{insight.text}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

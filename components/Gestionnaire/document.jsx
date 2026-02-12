@@ -260,7 +260,7 @@ export default function GestionDocuments() {
                               <Eye size={18} />
                             </button>
                             {hoverDocInfoId === doc.id && (
-                              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-30">
+                              <div className="absolute right-0 top-full mt-2 z-30">
                                 {renderDocInfo(doc)}
                               </div>
                             )}

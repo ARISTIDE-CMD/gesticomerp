@@ -206,7 +206,7 @@ export default function AdminCommandes() {
                             <Eye size={18} />
                           </button>
                           {hoveredCommandeInfoId === commande.id && (
-                            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-30">
+                            <div className="absolute right-0 top-full mt-2 z-30">
                               {renderCommandeInfo(commande)}
                             </div>
                           )}

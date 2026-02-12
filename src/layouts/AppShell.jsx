@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { Bell, ChevronLeft, User } from 'lucide-react';
 import { logout } from '@/services/auth.service';
 import { getMyProfile, updateMyProfileAvatar, uploadMyProfileAvatar } from '@/services/profile.service';
 import { clearAllNotifications, clearNotification, getNotifications, notificationEventName } from '@/lib/notifications';
@@ -283,28 +283,39 @@ export default function AppShell({
         <aside
           className={[
             'fixed left-0 top-0 h-screen bg-blue-900 text-white flex flex-col overflow-y-auto transition-[width] duration-200',
-            isCollapsed ? 'w-20' : 'w-64',
+            isCollapsed ? 'w-20' : 'w-60',
           ].join(' ')}
         >
           <div className="px-5 py-6">
-            <div className={`flex items-center w-full ${isCollapsed ? '' : 'gap-3'}`}>
-              <div className="bg-blue-600 p-2 rounded-lg">
+            <div className={`flex items-center w-full ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCollapsed) setIsCollapsed(false);
+                }}
+                className={`bg-blue-600 p-2 rounded-lg ${isCollapsed ? 'hover:bg-blue-500 cursor-pointer' : 'cursor-default'}`}
+                aria-label={isCollapsed ? 'Ouvrir la barre laterale' : 'Logo Molige ERP'}
+                title={isCollapsed ? 'Ouvrir la barre laterale' : 'Molige ERP'}
+              >
                 <LogoMark />
-              </div>
+              </button>
               {!isCollapsed && (
                 <div className="leading-tight">
                   <div className="text-sm uppercase tracking-widest text-blue-200">Molige</div>
                   <div className="text-lg font-semibold">ERP</div>
                 </div>
               )}
-              <button
-                onClick={() => setIsCollapsed((prev) => !prev)}
-                className="ml-auto h-8 w-8 rounded-full bg-orange-500 text-white flex items-center justify-center shadow hover:bg-orange-600 transition-colors"
-                aria-label={isCollapsed ? 'Agrandir la barre laterale' : 'Reduire la barre laterale'}
-                title={isCollapsed ? 'Agrandir' : 'Reduire'}
-              >
-                {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-              </button>
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => setIsCollapsed(true)}
+                  className="ml-auto h-8 w-8 rounded-lg border border-orange-300/70 bg-orange-500 text-white flex items-center justify-center shadow-sm hover:bg-orange-600 transition-colors"
+                  aria-label="Reduire la barre laterale"
+                  title="Reduire"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -358,7 +369,7 @@ export default function AppShell({
           )}
         </aside>
 
-        <div className={`${isCollapsed ? 'ml-20' : 'ml-64'} min-h-screen flex flex-col transition-[margin] duration-200`}>
+        <div className={`${isCollapsed ? 'ml-20' : 'ml-60'} min-h-screen flex flex-col transition-[margin] duration-200`}>
           <header className="sticky top-0 z-40 bg-blue-50/95 backdrop-blur border-b border-blue-100 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-blue-600 p-2 rounded-lg">
