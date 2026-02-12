@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { logout } from '@/services/auth.service';
+import { getMyProfile, updateMyProfileAvatar, uploadMyProfileAvatar } from '@/services/profile.service';
 import { clearAllNotifications, clearNotification, getNotifications, notificationEventName } from '@/lib/notifications';
 
 const LogoMark = () => (
@@ -22,24 +23,55 @@ export default function AppShell({
   const [profile, setProfile] = useState(null);
   const [notifications, setNotifications] = useState({});
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [visibleNotifications, setVisibleNotifications] = useState(null);
   const [isBellRinging, setIsBellRinging] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const notificationRef = useRef(null);
+  const profileMenuRef = useRef(null);
+  const avatarInputRef = useRef(null);
   const ringTimeoutRef = useRef(null);
   const prevTotalRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+    let isMounted = true;
     try {
       const stored = localStorage.getItem('molige_profile');
       if (stored) {
-        setProfile(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (isMounted) {
+          setProfile(parsed);
+        }
       }
     } catch {
-      setProfile(null);
+      if (isMounted) {
+        setProfile(null);
+      }
     }
+
+    const hydrateProfile = async () => {
+      try {
+        const freshProfile = await getMyProfile();
+        if (!freshProfile || !isMounted) return;
+        setProfile((prev) => {
+          const merged = { ...prev, ...freshProfile };
+          localStorage.setItem('molige_profile', JSON.stringify(merged));
+          return merged;
+        });
+      } catch {
+        // keep local profile fallback
+      }
+    };
+
+    hydrateProfile();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const roleValue = String(profile?.role || displayUser.role || roleLabel || '').toUpperCase();
@@ -119,16 +151,25 @@ export default function AppShell({
     .filter((item) => item.count > 0);
 
   useEffect(() => {
-    if (!showNotifications) return;
+    if (!showNotifications && !showProfileMenu) return;
     const handleClickOutside = (event) => {
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+      if (
+        notificationRef.current &&
+        !notificationRef.current.contains(event.target)
+      ) {
         setShowNotifications(false);
         setVisibleNotifications(null);
+      }
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target)
+      ) {
+        setShowProfileMenu(false);
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
     return () => window.removeEventListener('mousedown', handleClickOutside);
-  }, [showNotifications]);
+  }, [showNotifications, showProfileMenu]);
 
   const playNotificationSound = () => {
     try {
@@ -181,6 +222,49 @@ export default function AppShell({
     profile?.email ||
     displayUser.name ||
     'Utilisateur';
+  const displayEmail = profile?.email || displayUser.email || '-';
+  const displayedAvatar = profile?.avatar_url || displayUser.avatar_url || '';
+
+  const handleProfileImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      event.target.value = '';
+      return;
+    }
+
+    setAvatarError('');
+    setAvatarUploading(true);
+    try {
+      const updatedProfile = await uploadMyProfileAvatar(file);
+      setProfile((prev) => {
+        const merged = { ...(prev || {}), ...(updatedProfile || {}) };
+        localStorage.setItem('molige_profile', JSON.stringify(merged));
+        return merged;
+      });
+    } catch (error) {
+      setAvatarError(error?.message || "Erreur lors de l'envoi de l'avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+    event.target.value = '';
+  };
+
+  const handleRemoveProfileImage = async () => {
+    setAvatarError('');
+    setAvatarUploading(true);
+    try {
+      const updatedProfile = await updateMyProfileAvatar(null);
+      setProfile((prev) => {
+        const merged = { ...(prev || {}), ...(updatedProfile || {}), avatar_url: null };
+        localStorage.setItem('molige_profile', JSON.stringify(merged));
+        return merged;
+      });
+    } catch (error) {
+      setAvatarError(error?.message || "Erreur lors de la suppression de l'avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -275,7 +359,7 @@ export default function AppShell({
         </aside>
 
         <div className={`${isCollapsed ? 'ml-20' : 'ml-64'} min-h-screen flex flex-col transition-[margin] duration-200`}>
-          <header className="bg-blue-50 border-b border-blue-100 px-6 py-4 flex items-center justify-between">
+          <header className="sticky top-0 z-40 bg-blue-50/95 backdrop-blur border-b border-blue-100 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-blue-600 p-2 rounded-lg">
                 <LogoMark />
@@ -330,22 +414,105 @@ export default function AppShell({
                   </div>
                 )}
               </div>
-              <div className="text-right">
-                <div className="text-sm font-semibold text-blue-900">{displayName}</div>
-                <div className="text-xs text-blue-500">{roleLabelNormalized}</div>
-              </div>
-              <button
-                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                onClick={handleLogout}
-                disabled={loggingOut}
-              >
-                <span className="flex items-center gap-2">
-                  {loggingOut && (
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileMenu((value) => !value)}
+                  className="flex items-center justify-center h-9 w-9 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                  aria-label="Profil"
+                  title="Profil"
+                >
+                  {displayedAvatar ? (
+                    <img
+                      src={displayedAvatar}
+                      alt={displayName}
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <User size={16} />
                   )}
-                  {loggingOut ? 'Deconnexion...' : 'Deconnexion'}
-                </span>
-              </button>
+                </button>
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-64 rounded-lg border border-blue-100 bg-white shadow-lg p-3 z-50">
+                    <div className="text-xs text-blue-500">Profil utilisateur</div>
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full bg-blue-100 overflow-hidden flex items-center justify-center">
+                        {displayedAvatar ? (
+                          <img
+                            src={displayedAvatar}
+                            alt={displayName}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <User size={20} className="text-blue-700" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <button
+                          type="button"
+                          onClick={() => avatarInputRef.current?.click()}
+                          className="text-xs text-blue-700 hover:text-blue-900 font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                          disabled={avatarUploading}
+                        >
+                          {avatarUploading ? 'Traitement...' : 'Changer la photo'}
+                        </button>
+                        {displayedAvatar && (
+                          <button
+                            type="button"
+                            onClick={handleRemoveProfileImage}
+                            className="mt-1 block text-xs text-orange-600 hover:text-orange-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                            disabled={avatarUploading}
+                          >
+                            Supprimer la photo
+                          </button>
+                        )}
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProfileImageChange}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 space-y-1 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">Nom</span>
+                        <span className="font-medium text-blue-900 text-right break-all">{displayName}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">Email</span>
+                        <span className="font-medium text-blue-900 text-right break-all">{displayEmail}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">Mot de passe</span>
+                        <span className="font-medium text-blue-900">********</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">Role</span>
+                        <span className="font-medium text-blue-900">{roleLabelNormalized}</span>
+                      </div>
+                    </div>
+                    {avatarError && (
+                      <div className="mt-2 text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-2 py-1">
+                        {avatarError}
+                      </div>
+                    )}
+                    <button
+                      className="mt-3 w-full bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                      onClick={handleLogout}
+                      disabled={loggingOut}
+                    >
+                      <span className="inline-flex items-center justify-center gap-2">
+                        {loggingOut && (
+                          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        )}
+                        {loggingOut ? 'Deconnexion...' : 'Deconnexion'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 
