@@ -167,8 +167,8 @@ export default function GestionDocuments() {
         </button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 bg-white rounded-lg border border-blue-50 shadow-sm">
+      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+        <div className="bg-white rounded-lg border border-blue-50 shadow-sm flex flex-col xl:h-[calc(100vh-220px)]">
           <div className="p-4 border-b border-blue-50 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-blue-600">Liste des documents</h2>
             <div className="text-sm text-gray-500">
@@ -176,9 +176,9 @@ export default function GestionDocuments() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="flex-1 overflow-auto">
             <table className="w-full">
-              <thead className="bg-blue-50">
+              <thead className="bg-blue-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-blue-500 uppercase">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-blue-500 uppercase">Reference</th>
@@ -235,7 +235,7 @@ export default function GestionDocuments() {
                             title="Voir"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handlePreview(doc);
+                              setSelectedDocument(doc);
                             }}
                           >
                             <Eye size={18} />
@@ -260,47 +260,81 @@ export default function GestionDocuments() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-blue-50 shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-blue-600 mb-4">Apercu du document</h3>
+        <div className="bg-white rounded-lg border border-blue-50 shadow-sm p-5 xl:h-[calc(100vh-220px)] xl:sticky xl:top-6 flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-blue-700">Visionneuse document</h3>
+              <p className="text-xs text-gray-500">Cliquez sur une ligne pour afficher son contenu</p>
+            </div>
+            {selectedDocument && (
+              <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2.5 py-1 rounded-full">
+                {typeLabel(selectedDocument.type_document)}
+              </span>
+            )}
+          </div>
 
           {selectedDocument ? (
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <FileText size={80} className="text-blue-500" />
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md bg-blue-50 p-2">
+                  <div className="text-blue-500 font-medium">Commande</div>
+                  <div className="text-gray-800">{selectedDocument.commande?.numero_commande ?? '-'}</div>
+                </div>
+                <div className="rounded-md bg-blue-50 p-2">
+                  <div className="text-blue-500 font-medium">Client</div>
+                  <div className="text-gray-800 truncate">{selectedDocument.commande?.client?.nom ?? '-'}</div>
+                </div>
+                <div className="rounded-md bg-blue-50 p-2">
+                  <div className="text-blue-500 font-medium">Date</div>
+                  <div className="text-gray-800">
+                    {selectedDocument.created_at ? new Date(selectedDocument.created_at).toLocaleDateString() : '-'}
+                  </div>
+                </div>
+                <div className="rounded-md bg-orange-50 p-2">
+                  <div className="text-orange-600 font-medium">Montant</div>
+                  <div className="text-gray-800 font-semibold">
+                    {selectedDocument.commande?.montant_total != null ? formatFCFA(selectedDocument.commande.montant_total, 2) : '-'}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 text-sm text-gray-700 bg-blue-50/50 p-4 rounded">
-                <div><span className="font-semibold">Type:</span> {typeLabel(selectedDocument.type_document)}</div>
-                <div><span className="font-semibold">Commande:</span> {selectedDocument.commande?.numero_commande ?? '-'}</div>
-                <div><span className="font-semibold">Client:</span> {selectedDocument.commande?.client?.nom ?? '-'}</div>
-                <div><span className="font-semibold">Montant:</span> {selectedDocument.commande?.montant_total != null ? formatFCFA(selectedDocument.commande.montant_total, 2) : '-'}</div>
-              </div>
+
               {selectedDocument.fichier_url ? (
-                <div className="space-y-3">
+                <>
                   <iframe
                     title="Apercu PDF"
                     src={selectedDocument.fichier_url}
-                    className="w-full h-64 border rounded"
+                    className="w-full flex-1 min-h-[280px] border border-blue-100 rounded-lg bg-white"
                   />
-                  <a
-                    href={selectedDocument.fichier_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
-                  >
-                    <Download size={16} />
-                    Telecharger le PDF
-                  </a>
-                </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md border border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => handlePreview(selectedDocument)}
+                    >
+                      <Eye size={16} />
+                      Ouvrir
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md bg-orange-500 text-white hover:bg-orange-600"
+                      onClick={() => handleDownload(selectedDocument)}
+                    >
+                      <Download size={16} />
+                      Telecharger
+                    </button>
+                  </div>
+                </>
               ) : (
-                <div className="text-sm text-gray-500">Aucun fichier PDF attache.</div>
+                <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-blue-200 text-sm text-gray-500">
+                  Aucun PDF attache
+                </div>
               )}
             </div>
           ) : (
-            <div className="text-center py-12">
-              <FileText size={80} className="text-gray-300 mx-auto mb-4" />
-              <p className="text-sm text-gray-500">
-                Selectionnez un document pour afficher son apercu ici.
-              </p>
+            <div className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-blue-200 bg-blue-50/30">
+              <FileText size={58} className="text-blue-300 mb-3" />
+              <p className="text-sm text-gray-600">Selectionnez un document a gauche</p>
+              <p className="text-xs text-gray-500 mt-1">Le contenu s'affichera ici</p>
             </div>
           )}
         </div>

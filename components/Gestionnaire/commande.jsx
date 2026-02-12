@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Edit, Trash2, Plus } from 'lucide-react';
+import { Edit, Trash2, Plus, QrCode } from 'lucide-react';
 import { getClients } from '@/services/clients.service';
 import { getArticles } from '@/services/articles.service';
 import { createCommande, getCommandes, deleteCommande, updateCommande } from '@/services/commandes.service';
 import { incrementNotification } from '@/lib/notifications';
 import { formatFCFA } from '@/lib/format';
+import QrCodeModal from '@/components/QrCodeModal';
 
 const generateNumero = () => {
   const now = new Date();
@@ -20,6 +21,7 @@ export default function GestionCommandes() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [qrContext, setQrContext] = useState(null);
 
   const [newOrder, setNewOrder] = useState({
     client_id: '',
@@ -183,6 +185,22 @@ export default function GestionCommandes() {
       default:
         return 'bg-gray-100 text-gray-700';
     }
+  };
+
+  const openCommandeQr = (commande) => {
+    const payload = {
+      type: 'COMMANDE',
+      id: commande.id,
+      numero_commande: commande.numero_commande,
+      client: commande.client?.nom || '',
+      statut: commande.statut || '',
+      montant_total: Number(commande.montant_total || 0),
+      created_at: commande.created_at || null,
+    };
+    setQrContext({
+      title: `QR Commande ${commande.numero_commande || ''}`.trim(),
+      value: JSON.stringify(payload),
+    });
   };
 
   return (
@@ -392,6 +410,13 @@ export default function GestionCommandes() {
                           <Edit size={18} />
                         </button>
                         <button
+                          className="text-blue-500 hover:text-blue-700"
+                          title="QR code"
+                          onClick={() => openCommandeQr(commande)}
+                        >
+                          <QrCode size={18} />
+                        </button>
+                        <button
                           className="text-orange-500 hover:text-orange-600"
                           onClick={() => handleDelete(commande.id)}
                           title="Supprimer"
@@ -407,6 +432,13 @@ export default function GestionCommandes() {
           </table>
         </div>
       </div>
+
+      <QrCodeModal
+        open={Boolean(qrContext)}
+        onClose={() => setQrContext(null)}
+        title={qrContext?.title}
+        qrValue={qrContext?.value}
+      />
     </div>
   );
 }

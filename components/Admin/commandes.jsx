@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Search, Eye } from 'lucide-react';
+import { Search, Eye, QrCode } from 'lucide-react';
 import { getCommandes } from '@/services/commandes.service';
 import { formatFCFA } from '@/lib/format';
+import QrCodeModal from '@/components/QrCodeModal';
 
 export default function AdminCommandes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [commandes, setCommandes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [qrContext, setQrContext] = useState(null);
 
   useEffect(() => {
     loadCommandes();
@@ -41,6 +43,22 @@ export default function AdminCommandes() {
     commande.numero_commande?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     commande.client?.nom?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const openCommandeQr = (commande) => {
+    const payload = {
+      type: 'COMMANDE',
+      id: commande.id,
+      numero_commande: commande.numero_commande,
+      client: commande.client?.nom || '',
+      statut: commande.statut || '',
+      montant_total: Number(commande.montant_total || 0),
+      created_at: commande.created_at || null,
+    };
+    setQrContext({
+      title: `QR Commande ${commande.numero_commande || ''}`.trim(),
+      value: JSON.stringify(payload),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -123,9 +141,18 @@ export default function AdminCommandes() {
                       {commande.montant_total ? formatFCFA(commande.montant_total, 2) : formatFCFA(0, 2)}
                     </td>
                     <td className="px-6 py-4">
-                      <button className="text-blue-500 hover:text-blue-700" title="Voir">
-                        <Eye size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button className="text-blue-500 hover:text-blue-700" title="Voir">
+                          <Eye size={18} />
+                        </button>
+                        <button
+                          className="text-blue-500 hover:text-blue-700"
+                          title="QR code"
+                          onClick={() => openCommandeQr(commande)}
+                        >
+                          <QrCode size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -134,6 +161,13 @@ export default function AdminCommandes() {
           </table>
         </div>
       </div>
+
+      <QrCodeModal
+        open={Boolean(qrContext)}
+        onClose={() => setQrContext(null)}
+        title={qrContext?.title}
+        qrValue={qrContext?.value}
+      />
     </div>
   );
 }

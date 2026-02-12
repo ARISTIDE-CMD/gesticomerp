@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Edit, Trash2, Package, X } from 'lucide-react';
+import { Edit, Trash2, Package, X, QrCode } from 'lucide-react';
 import { getArticles, createArticle, updateArticle, deleteArticle } from '@/services/articles.service';
 import { formatFCFA } from '@/lib/format';
 import { syncStockAlerts } from '@/lib/notifications';
+import QrCodeModal from '@/components/QrCodeModal';
 
 export default function GestionArticles() {
   const [articles, setArticles] = useState([]);
@@ -16,6 +17,7 @@ export default function GestionArticles() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [qrContext, setQrContext] = useState(null);
 
   useEffect(() => {
     loadArticles();
@@ -97,6 +99,22 @@ export default function GestionArticles() {
     }
   };
 
+  const openArticleQr = (article) => {
+    const payload = {
+      type: 'ARTICLE',
+      id: article.id,
+      reference: article.reference ?? article.ref ?? '',
+      designation: article.designation ?? article.nom ?? '',
+      prix_unitaire: Number(article.prix_unitaire ?? article.prix ?? 0),
+      quantite_stock: Number(article.quantite_stock ?? article.quantite ?? 0),
+    };
+
+    setQrContext({
+      title: `QR Article ${payload.reference || payload.id?.slice(0, 8) || ''}`.trim(),
+      value: JSON.stringify(payload),
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -162,6 +180,13 @@ export default function GestionArticles() {
                           onClick={() => handleEdit(article)}
                         >
                           <Edit size={18} />
+                        </button>
+                        <button
+                          className="text-blue-500 hover:text-blue-700"
+                          title="QR code"
+                          onClick={() => openArticleQr(article)}
+                        >
+                          <QrCode size={18} />
                         </button>
                         <button
                           className="text-orange-500 hover:text-orange-600"
@@ -339,6 +364,13 @@ export default function GestionArticles() {
           </div>
         </div>
       )}
+
+      <QrCodeModal
+        open={Boolean(qrContext)}
+        onClose={() => setQrContext(null)}
+        title={qrContext?.title}
+        qrValue={qrContext?.value}
+      />
     </div>
   );
 }
