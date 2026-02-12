@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Edit, Trash2, Plus } from 'lucide-react';
 import { getClients } from '@/services/clients.service';
 import { getArticles } from '@/services/articles.service';
-import { createCommande, getCommandes, deleteCommande } from '@/services/commandes.service';
+import { createCommande, getCommandes, deleteCommande, updateCommande } from '@/services/commandes.service';
 
 const generateNumero = () => {
   const now = new Date();
@@ -49,12 +49,24 @@ export default function GestionCommandes() {
     [newOrder]
   );
 
+  const getArticleById = (articleId) => articles.find((a) => a.id === articleId);
+  const getStockForLine = (line) => getArticleById(line.article_id)?.quantite_stock ?? 0;
+
   const handleQty = (id, value) => {
     setNewOrder((prev) => ({
       ...prev,
-      lignes: prev.lignes.map((line) =>
-        line.id === id ? { ...line, quantite: Math.max(1, Number(value) || 1) } : line
-      ),
+      lignes: prev.lignes.map((line) => {
+        if (line.id !== id) return line;
+        const stock = getStockForLine(line);
+        const wanted = Number(value) || 0;
+        if (!line.article_id) {
+          return { ...line, quantite: Math.max(1, wanted || 1) };
+        }
+        if (stock <= 0) {
+          return { ...line, quantite: 0 };
+        }
+        return { ...line, quantite: Math.min(Math.max(1, wanted || 1), stock) };
+      }),
     }));
   };
 
@@ -64,7 +76,15 @@ export default function GestionCommandes() {
       ...prev,
       lignes: prev.lignes.map((line) =>
         line.id === id
-          ? { ...line, article_id: articleId, prix: article?.prix_unitaire ?? 0 }
+          ? {
+              ...line,
+              article_id: articleId,
+              prix: article?.prix_unitaire ?? 0,
+              quantite:
+                article && article.quantite_stock > 0
+                  ? Math.min(Math.max(1, line.quantite), article.quantite_stock)
+                  : 0,
+            }
           : line
       ),
     }));
@@ -99,6 +119,17 @@ export default function GestionCommandes() {
         throw new Error('Ajoutez au moins un article.');
       }
 
+      for (const line of lignes) {
+        const article = getArticleById(line.article_id);
+        const stock = article?.quantite_stock ?? 0;
+        if (line.quantite > stock) {
+          throw new Error(`Stock insuffisant pour ${article?.designation ?? 'article'}.`);
+        }
+        if (stock <= 0) {
+          throw new Error(`Stock indisponible pour ${article?.designation ?? 'article'}.`);
+        }
+      }
+
       await createCommande(
         {
           numero_commande: generateNumero(),
@@ -112,6 +143,19 @@ export default function GestionCommandes() {
       setNewOrder({ client_id: '', lignes: [{ id: Date.now(), article_id: '', prix: 0, quantite: 1 }] });
     } catch (e) {
       setError(e.message || 'Erreur lors de la creation.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleValidate = async (id) => {
+    setSaving(true);
+    setError('');
+    try {
+      await updateCommande(id, { statut: 'validee' });
+      await loadData();
+    } catch (e) {
+      setError(e.message || 'Erreur lors de la validation.');
     } finally {
       setSaving(false);
     }
@@ -219,11 +263,18 @@ export default function GestionCommandes() {
                     <td className="px-4 py-3 text-sm">
                       <input
                         type="number"
-                        min="1"
+                        min={getStockForLine(line) > 0 ? 1 : 0}
+                        max={getStockForLine(line)}
                         value={line.quantite}
                         onChange={(e) => handleQty(line.id, e.target.value)}
                         className="w-20 border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={getStockForLine(line) <= 0}
                       />
+                      {line.article_id && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Stock: {getStockForLine(line)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {(line.prix * line.quantite).toFixed(2)} €
@@ -324,6 +375,16 @@ export default function GestionCommandes() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
+                        {commande.statut === 'en_attente' && (
+                          <button
+                            className="text-green-600 hover:text-green-700"
+                            title="Valider"
+                            onClick={() => handleValidate(commande.id)}
+                            disabled={saving}
+                          >
+                            Valider
+                          </button>
+                        )}
                         <button className="text-blue-500 hover:text-blue-700" title="Modifier">
                           <Edit size={18} />
                         </button>
